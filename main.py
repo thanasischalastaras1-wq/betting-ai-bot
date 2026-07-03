@@ -17,6 +17,7 @@ API_FOOTBALL = os.getenv("API_FOOTBALL_KEY")
 ODDS_API = os.getenv("ODDS_API_KEY")
 OWNER_ID = int(os.getenv("YOUR_CHAT_ID", 0))
 MIN_CONFIDENCE = int(os.getenv("MIN_CONFIDENCE", 65))
+MAX_CONFIDENCE = int(os.getenv("MAX_CONFIDENCE", 80))
 MIN_ODDS = float(os.getenv("MIN_ODDS", 1.70))
 MAX_ODDS = float(os.getenv("MAX_ODDS", 2.50))
 
@@ -26,6 +27,21 @@ logger = logging.getLogger(__name__)
 users = {OWNER_ID}
 value_bets_cache = []
 monitoring_active = False
+
+# ============================================
+# HELPER FUNCTIONS
+# ============================================
+
+def get_risk_level(confidence):
+    """Υπολογίζει το επίπεδο κινδύνου βάσει confidence"""
+    if confidence >= 75:
+        return "🟢 VERY LOW RISK", confidence
+    elif confidence >= 70:
+        return "🟡 LOW RISK", confidence
+    elif confidence >= 65:
+        return "🟠 MEDIUM RISK", confidence
+    else:
+        return "🔴 HIGH RISK", confidence
 
 # ============================================
 # API CALLS
@@ -132,7 +148,7 @@ def calculate_win_probability(home_team, away_team):
         return {"home": 50, "away": 50, "draw": 0}
 
 def find_value_bets():
-    """Βρίσκει value bets με ελάχιστη confidence 65% και odds 1.70-2.50"""
+    """Βρίσκει value bets με confidence 65-80% και odds 1.70-2.50"""
     global value_bets_cache
     
     try:
@@ -178,21 +194,23 @@ def find_value_bets():
                                     else:
                                         continue
                                     
-                                    # ✅ Φίλτρο confidence: 65%+
-                                    if actual_prob >= MIN_CONFIDENCE and actual_prob > implied_prob:
+                                    # ✅ Φίλτρο confidence: 65-80%
+                                    if MIN_CONFIDENCE <= actual_prob <= MAX_CONFIDENCE and actual_prob > implied_prob:
                                         edge = actual_prob - implied_prob
                                         roi = (edge / implied_prob) * 100
+                                        risk_level, conf = get_risk_level(actual_prob)
                                         
                                         bet = {
                                             "match": f"{home_team.get('name')} vs {away_team.get('name')}",
                                             "pick": outcome_name,
-                                            "odds": decimal_odds,
+                                            "odds": round(decimal_odds, 2),
                                             "confidence": round(actual_prob, 1),
                                             "implied_prob": round(implied_prob, 1),
                                             "edge": round(edge, 1),
                                             "roi": round(roi, 1),
                                             "bookmaker": bookmaker.get("title", "Unknown"),
-                                            "time": fixture.get("date", "")
+                                            "time": fixture.get("date", ""),
+                                            "risk_level": risk_level
                                         }
                                         
                                         value_bets.append(bet)
@@ -215,11 +233,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     users.add(user_id)
     
-    text = f"""🎯 **Betting AI Bot - Value Betting**
+    text = f"""🎯 **Betting AI Bot - Safe Value Betting**
 
 Καλώς ήρθες! Αυτό το bot βρίσκει **value bets** με:
-- ✅ Minimum confidence: **{MIN_CONFIDENCE}%**
-- ✅ Odds range: **{MIN_ODDS} - {MAX_ODDS}**
+- ✅ Confidence Range: **{MIN_CONFIDENCE}% - {MAX_CONFIDENCE}%**
+- ✅ Odds Range: **{MIN_ODDS} - {MAX_ODDS}**
+- ✅ Risk Level Display
+
+**Επίπεδα Κινδύνου:**
+🟢 VERY LOW RISK (75-80%)
+🟡 LOW RISK (70-75%)
+🟠 MEDIUM RISK (65-70%)
 
 **Εντολές:**
 /status - Κατάσταση bot
@@ -238,8 +262,8 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🟢 Online
 👥 Ενεργοί χρήστες: {len(users)}
 📊 Value bets στη cache: {len(value_bets_cache)}
-🎯 Ελάχιστη confidence: {MIN_CONFIDENCE}%
-💰 Odds range: {MIN_ODDS} - {MAX_ODDS}
+🎯 Confidence Range: {MIN_CONFIDENCE}% - {MAX_CONFIDENCE}%
+💰 Odds Range: {MIN_ODDS} - {MAX_ODDS}
 ⏰ Live monitoring: {'✅ ON' if monitoring_active else '❌ OFF'}
 
 Ενημέρωση: {datetime.now().strftime('%H:%M:%S')}
@@ -251,15 +275,15 @@ async def top_bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bets = find_value_bets()
     
     if not bets:
-        await update.message.reply_text(f"❌ Δεν υπάρχουν value bets με {MIN_CONFIDENCE}%+ confidence και odds {MIN_ODDS}-{MAX_ODDS}")
+        await update.message.reply_text(f"❌ Δεν υπάρχουν value bets με {MIN_CONFIDENCE}%-{MAX_CONFIDENCE}% confidence και odds {MIN_ODDS}-{MAX_ODDS}")
         return
     
-    text = "🎯 **Top Value Bets**\n\n"
+    text = "🎯 **Top Value Bets - Sorted by ROI**\n\n"
     for i, bet in enumerate(bets, 1):
         text += f"""{i}. **{bet['match']}**
    Pick: {bet['pick']}
    Odds: {bet['odds']}
-   Confidence: {bet['confidence']}%
+   Confidence: {bet['confidence']}% {bet['risk_level']}
    ROI: +{bet['roi']}%
    Bookmaker: {bet['bookmaker']}
    \n"""
@@ -268,13 +292,19 @@ async def top_bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Εντολή /help"""
-    text = """📋 **Available Commands:**
+    text = f"""📋 **Available Commands:**
 
 /start - Ενεργοποίηση bot
 /status - Κατάσταση bot
 /topbets - Top value bets
 /help - Βοήθεια
 /stats - Στατιστικά
+
+**Configuration:**
+MIN Confidence: {MIN_CONFIDENCE}%
+MAX Confidence: {MAX_CONFIDENCE}%
+MIN Odds: {MIN_ODDS}
+MAX Odds: {MAX_ODDS}
 """
     await update.message.reply_text(text, parse_mode="Markdown")
 
