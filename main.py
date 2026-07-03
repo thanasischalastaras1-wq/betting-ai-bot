@@ -17,6 +17,8 @@ API_FOOTBALL = os.getenv("API_FOOTBALL_KEY")
 ODDS_API = os.getenv("ODDS_API_KEY")
 OWNER_ID = int(os.getenv("YOUR_CHAT_ID", 0))
 MIN_CONFIDENCE = int(os.getenv("MIN_CONFIDENCE", 65))
+MIN_ODDS = float(os.getenv("MIN_ODDS", 1.70))
+MAX_ODDS = float(os.getenv("MAX_ODDS", 2.50))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -130,7 +132,7 @@ def calculate_win_probability(home_team, away_team):
         return {"home": 50, "away": 50, "draw": 0}
 
 def find_value_bets():
-    """Βρίσκει value bets με ελάχιστη confidence 65%"""
+    """Βρίσκει value bets με ελάχιστη confidence 65% και odds 1.70-2.50"""
     global value_bets_cache
     
     try:
@@ -163,6 +165,10 @@ def find_value_bets():
                                     outcome_name = outcome.get("name")
                                     decimal_odds = outcome.get("price", 0)
                                     
+                                    # ✅ Φίλτρο αποδόσεων: 1.70 - 2.50
+                                    if decimal_odds < MIN_ODDS or decimal_odds > MAX_ODDS:
+                                        continue
+                                    
                                     implied_prob = (1 / decimal_odds * 100) if decimal_odds > 0 else 0
                                     
                                     if outcome_name == home_team.get("name"):
@@ -172,6 +178,7 @@ def find_value_bets():
                                     else:
                                         continue
                                     
+                                    # ✅ Φίλτρο confidence: 65%+
                                     if actual_prob >= MIN_CONFIDENCE and actual_prob > implied_prob:
                                         edge = actual_prob - implied_prob
                                         roi = (edge / implied_prob) * 100
@@ -208,14 +215,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     users.add(user_id)
     
-    text = """🎯 **Betting AI Bot - 65%+ Confidence**
+    text = f"""🎯 **Betting AI Bot - Value Betting**
 
-Καλώς ήρθες! Αυτό το bot βρίσκει **value bets** με ελάχιστη σιγουριά **65%**.
+Καλώς ήρθες! Αυτό το bot βρίσκει **value bets** με:
+- ✅ Minimum confidence: **{MIN_CONFIDENCE}%**
+- ✅ Odds range: **{MIN_ODDS} - {MAX_ODDS}**
 
 **Εντολές:**
 /status - Κατάσταση bot
 /topbets - Top value bets σήμερα
-/odds - Τρέχοντα odds
 /help - Βοήθεια
 /stats - Στατιστικά
 
@@ -231,6 +239,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 👥 Ενεργοί χρήστες: {len(users)}
 📊 Value bets στη cache: {len(value_bets_cache)}
 🎯 Ελάχιστη confidence: {MIN_CONFIDENCE}%
+💰 Odds range: {MIN_ODDS} - {MAX_ODDS}
 ⏰ Live monitoring: {'✅ ON' if monitoring_active else '❌ OFF'}
 
 Ενημέρωση: {datetime.now().strftime('%H:%M:%S')}
@@ -242,7 +251,7 @@ async def top_bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bets = find_value_bets()
     
     if not bets:
-        await update.message.reply_text("❌ Δεν υπάρχουν value bets αυτή τη στιγμή με 65%+ confidence")
+        await update.message.reply_text(f"❌ Δεν υπάρχουν value bets με {MIN_CONFIDENCE}%+ confidence και odds {MIN_ODDS}-{MAX_ODDS}")
         return
     
     text = "🎯 **Top Value Bets**\n\n"
