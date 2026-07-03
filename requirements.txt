@@ -1,6 +1,6 @@
-python-telegram-bot==21.4
+fastapi
+uvicorn[standard]
+python-dotenv
 requests
 pandas
-numpy
-python-dotenv
-aiohttp
+python-telegram-bot>=20.0
