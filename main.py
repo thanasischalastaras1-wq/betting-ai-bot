@@ -34,13 +34,11 @@ monitoring_active = False
 
 def get_risk_level(confidence):
     """Υπολογίζει το επίπεδο κινδύνου βάσει confidence"""
-    if confidence >= 75:
-        return "🟢 VERY LOW RISK", confidence
-    elif confidence >= 70:
-        return "🟡 LOW RISK", confidence
-    elif confidence >= 65:
-        return "🟠 MEDIUM RISK", confidence
-    else:
+    if confidence >= 65 and confidence < 70:
+        return "🟢 SAFE", confidence
+    elif confidence >= 70 and confidence < 80:
+        return "🟡 MEDIUM RISK", confidence
+    else:  # >= 80
         return "🔴 HIGH RISK", confidence
 
 # ============================================
@@ -208,7 +206,6 @@ def find_value_bets():
                                             "implied_prob": round(implied_prob, 1),
                                             "edge": round(edge, 1),
                                             "roi": round(roi, 1),
-                                            "bookmaker": bookmaker.get("title", "Unknown"),
                                             "time": fixture.get("date", ""),
                                             "risk_level": risk_level
                                         }
@@ -241,9 +238,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 - ✅ Risk Level Display
 
 **Επίπεδα Κινδύνου:**
-🟢 VERY LOW RISK (75-80%)
-🟡 LOW RISK (70-75%)
-🟠 MEDIUM RISK (65-70%)
+🟢 SAFE (65-70%)
+🟡 MEDIUM RISK (70-80%)
+🔴 HIGH RISK (80%+)
 
 **Εντολές:**
 /status - Κατάσταση bot
@@ -285,7 +282,6 @@ async def top_bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
    Odds: {bet['odds']}
    Confidence: {bet['confidence']}% {bet['risk_level']}
    ROI: +{bet['roi']}%
-   Bookmaker: {bet['bookmaker']}
    \n"""
     
     await update.message.reply_text(text, parse_mode="Markdown")
@@ -301,8 +297,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /stats - Στατιστικά
 
 **Configuration:**
-MIN Confidence: {MIN_CONFIDENCE}%
-MAX Confidence: {MAX_CONFIDENCE}%
+MIN Confidence: {MIN_CONFIDENCE}% (SAFE)
+MID Confidence: 70% (MEDIUM RISK)
+MAX Confidence: {MAX_CONFIDENCE}% (HIGH RISK)
 MIN Odds: {MIN_ODDS}
 MAX Odds: {MAX_ODDS}
 """
